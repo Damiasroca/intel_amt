@@ -32,9 +32,15 @@
   },
   "entity": {
     "sensor": {
-      "power": {
-        "name": "Power state"
-      }
+      "power": { "name": "Power state" },
+      "model": { "name": "Model" },
+      "serial_number": { "name": "Serial number" },
+      "amt_firmware": { "name": "AMT firmware" },
+      "bios_version": { "name": "BIOS version" }
+    },
+    "binary_sensor": {
+      "kvm_active": { "name": "KVM session active" },
+      "redirection_enabled": { "name": "Redirection enabled" }
     },
     "switch": {
       "power": {

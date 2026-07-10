@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .amt_client import AmtClient, AmtStatus
+from .amt_client import AmtClient, AmtDeviceInfo, AmtStatus
 from .const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -18,6 +18,7 @@ from .const import (
     CONF_USERNAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    PLATFORMS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class IntelAmtCoordinator(DataUpdateCoordinator[AmtStatus]):
     """Poll AMT power status."""
 
     config_entry: ConfigEntry
+    device_info: AmtDeviceInfo | None = None
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: AmtClient) -> None:
         self.client = client
@@ -74,20 +76,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         raise ConfigEntryNotReady(f"Unable to connect to AMT: {err}") from err
 
+    try:
+        coordinator.device_info = await hass.async_add_executor_job(
+            client.get_device_info
+        )
+    except Exception as err:
+        _LOGGER.warning("AMT device info fetch failed (continuing without): %s", err)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    await hass.config_entries.async_forward_entry_setups(
-        entry, ["sensor", "switch", "button"]
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload Intel AMT config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, ["sensor", "switch", "button"]
-    )
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
