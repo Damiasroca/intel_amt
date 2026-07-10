@@ -2,6 +2,8 @@
 
 DOMAIN = "intel_amt"
 
+PLATFORMS = ["sensor", "binary_sensor", "switch", "button"]
+
 CONF_PROTOCOL = "protocol"
 CONF_HOST = "host"
 CONF_USERNAME = "username"
