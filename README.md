@@ -16,6 +16,9 @@ Reference: [rgl/intel-amt-notes](https://github.com/rgl/intel-amt-notes)
 - Hard reset / soft reset / reboot
 - PXE boot (one-time network boot)
 - Power state sensor with `available_transitions` attribute
+- Live KVM session + SOL/IDER redirection status as binary sensors
+- Real device identity on the HA device page (manufacturer, model, serial, BIOS, AMT firmware)
+- Diagnostic sensors for the same info so it can be used on Lovelace cards and automations
 - UI config flow — no YAML editing required
 - Options for poll interval
 
@@ -46,9 +49,11 @@ Copy `custom_components/intel_amt/` to `/config/custom_components/intel_amt/` an
 
 Each configured device gets:
 
+### Power & control
+
 | Entity | Description |
 |--------|-------------|
-| `sensor.*_power_state` | Current state + available transitions |
+| `sensor.*_power_state` | Current state + `available_transitions` attribute |
 | `switch.*_power` | On / soft-off |
 | `button.*_hard_off` | Abrupt shutdown |
 | `button.*_soft_off` | Graceful shutdown (needs Intel LMS) |
@@ -58,11 +63,30 @@ Each configured device gets:
 | `button.*_pxe_boot` | Network boot once |
 | `button.*_refresh_status` | Poll now |
 
+### Redirection status (per poll)
+
+| Entity | Description |
+|--------|-------------|
+| `binary_sensor.*_kvm_session_active` | On when a KVM session is currently connected; `kvm_state` attribute exposes raw state (`connected` / `listening` / `disabled`) |
+| `binary_sensor.*_redirection_enabled` | On when AMT is accepting SOL or IDER connections; `sol_enabled` / `ider_enabled` / `redirection_state` attributes for fine-grained automations |
+
+### Hardware / firmware info (diagnostic, read once at setup)
+
+| Entity | Description |
+|--------|-------------|
+| `sensor.*_model` | e.g. `HP EliteDesk 800 G5 Desktop Mini` |
+| `sensor.*_serial_number` | Chassis serial |
+| `sensor.*_amt_firmware` | AMT firmware version (e.g. `12.0.35.1450`) |
+| `sensor.*_bios_version` | BIOS version string |
+
+The same identity values are also shown on the Home Assistant device page (Manufacturer, Model, Serial number, Hardware version, Firmware version), populated from the same one-time WSMAN inventory fetch.
+
 ## Notes
 
 - HA must run on a **different machine** on the LAN — a host cannot reach its own AMT.
 - **Soft-off / soft-reset** require the Intel LMS agent in the OS. Use hard off/reset otherwise.
-- When KVM/IDER is active, some transitions return "not ready" (ReturnValue 2).
+- When KVM/IDER is active, some power transitions return "not ready" (ReturnValue 2). Guard automations with `binary_sensor.*_kvm_session_active` or the `ider_enabled` attribute.
+- Poll adds three WSMAN queries per interval (power + KVM + redirection). Negligible at the default 2-min interval; still fine at the 30-second minimum.
 
 ## Pyscript alternative
 
