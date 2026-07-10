@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/logo.png" alt="Intel vPro" width="160">
+</p>
+
 # Intel AMT — Home Assistant Integration
 
 Out-of-band power control for Intel AMT / vPro systems from Home Assistant.
