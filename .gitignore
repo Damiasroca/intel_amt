@@ -1,0 +1,20 @@
+# Local dev / workspace files not part of the HACS integration
+venv/
+homeassistant/
+uploads/
+cursor_hardware_audit_details.md
+terminals/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

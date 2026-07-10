@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Intel AMT",
+        "description": "Connect to an Intel AMT/vPro device for out-of-band power control.",
+        "data": {
+          "host": "AMT host",
+          "username": "Username",
+          "password": "Password",
+          "protocol": "Protocol",
+          "name": "Device name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to AMT. Check host, credentials, and that port 16992/16993 is reachable."
+    },
+    "abort": {
+      "already_configured": "This AMT host is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Intel AMT options",
+        "data": {
+          "scan_interval": "Status poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Power state"
+      }
+    },
+    "switch": {
+      "power": {
+        "name": "Power"
+      }
+    },
+    "button": {
+      "hard_off": { "name": "Hard off" },
+      "soft_off": { "name": "Soft off" },
+      "hard_reset": { "name": "Hard reset" },
+      "soft_reset": { "name": "Soft reset" },
+      "reboot": { "name": "Reboot" },
+      "pxe_boot": { "name": "PXE boot" },
+      "refresh": { "name": "Refresh status" }
+    }
+  }
+}
