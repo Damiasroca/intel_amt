@@ -26,6 +26,10 @@ class IntelAmtButtonDescription:
     press_fn: Callable[[IntelAmtCoordinator], Coroutine[Any, Any, None]]
 
 
+async def _power_on(coordinator: IntelAmtCoordinator) -> None:
+    await coordinator.async_run_power("on")
+
+
 async def _hard_off(coordinator: IntelAmtCoordinator) -> None:
     await coordinator.async_run_power("off")
 
@@ -55,6 +59,12 @@ async def _refresh(coordinator: IntelAmtCoordinator) -> None:
 
 
 BUTTONS: tuple[IntelAmtButtonDescription, ...] = (
+    IntelAmtButtonDescription(
+        key="power_on",
+        translation_key="power_on",
+        icon="mdi:power",
+        press_fn=_power_on,
+    ),
     IntelAmtButtonDescription(
         key="hard_off",
         translation_key="hard_off",
