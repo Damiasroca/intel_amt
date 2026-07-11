@@ -43,3 +43,6 @@ RETURN_VALUES = {
     5: "invalid parameter",
     6: "in use",
 }
+
+SERVICE_ADD_WAKE_ALARM = "add_wake_alarm"
+SERVICE_DELETE_WAKE_ALARM = "delete_wake_alarm"

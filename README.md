@@ -116,6 +116,8 @@ Each configured device gets:
 | Entity                    | Description                                                                                                                                                |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sensor.*_last_amt_event` | Timestamp of the newest `AMT_EventLogEntry`; parsed source/description exposed as `description` attribute (e.g. `Starting operating system boot process.`) |
+| `sensor.*_next_wake`      | Earliest scheduled firmware wake (`TIMESTAMP`); `wake_alarms` list and `wake_alarm_count` in attributes                                                    |
+| `button.*_delete_wake_*`  | One button per scheduled alarm (auto-created); press to cancel that wake                                                                                   |
 
 
 
@@ -223,6 +225,8 @@ The 24-hour timeline uses HA's built-in `history-graph`, no install needed.
 
 Same `elitedesk` slug replacement rule applies.
 
+Create one helper first (Settings → Devices & services → Helpers → Toggle): **`input_boolean.elitedesk_wake_alarm_config`**. The **Wake alarms** button in More actions toggles the panel below.
+
 ```yaml
 type: vertical-stack
 title: Intel AMT — EliteDesk
@@ -235,8 +239,9 @@ cards:
     size: 25%
     icon: |
       [[[
-        if (!entity) return 'mdi:help-circle-outline';
+        if (!entity) return 'mdi:alert-circle-outline';
         const s = entity.state;
+        if (['unavailable','unknown'].includes(s)) return 'mdi:cloud-off-outline';
         if (s === 'on') return 'mdi:desktop-tower';
         if (['reboot','hard-reboot','reset','soft-reset'].includes(s)) return 'mdi:restart';
         if (['soft-off','off','hibernate','sleep','standby'].includes(s)) return 'mdi:desktop-tower-monitor';
@@ -264,6 +269,16 @@ cards:
           card:
             - background: linear-gradient(135deg, rgba(255,167,38,0.25), rgba(255,167,38,0.05))
             - border: 1px solid rgba(255,167,38,0.35)
+      - operator: 'in'
+        value:
+          - 'unavailable'
+          - 'unknown'
+        color: 'var(--disabled-text-color)'
+        styles:
+          card:
+            - background: rgba(120,120,120,0.10)
+            - border: 1px solid rgba(120,120,120,0.25)
+            - opacity: 0.75
       - operator: 'in'
         value:
           - 'off'
@@ -481,32 +496,348 @@ cards:
   - type: entities
     title: Device
     entities:
-      - entity: sensor.elitedesk_model
-      - entity: sensor.elitedesk_hostname
-      - entity: sensor.elitedesk_ip_address
-      - entity: sensor.elitedesk_cpu
-      - entity: sensor.elitedesk_amt_firmware
-      - entity: sensor.elitedesk_bios_version
-      - entity: sensor.elitedesk_serial_number
-      - entity: sensor.elitedesk_system_id
-      - entity: sensor.elitedesk_provisioning_state
-      - entity: sensor.elitedesk_provisioning_mode
-      - entity: sensor.elitedesk_last_amt_event
+      - &amt_row
+        type: custom:button-card
+        show_state: true
+        tap_action:
+          action: more-info
+        styles: &amt_row_styles
+          card:
+            - box-shadow: none
+            - background: none
+            - padding: 6px 4px
+          grid:
+            - grid-template-areas: '"i n s"'
+            - grid-template-columns: 36px 1fr auto
+            - column-gap: 12px
+          img_cell:
+            - justify-self: start
+          icon:
+            - width: 22px
+            - color: >
+                [[[ return (!entity || ['unavailable','unknown',''].includes(entity.state)) ? 'var(--disabled-text-color)' : '#42a5f5'; ]]]
+          name:
+            - justify-self: start
+            - font-size: 14px
+          state:
+            - justify-self: end
+            - font-size: 13px
+            - color: var(--secondary-text-color)
+            - text-overflow: ellipsis
+            - overflow: hidden
+            - white-space: nowrap
+        entity: sensor.elitedesk_model
+        name: Model
+        icon: mdi:desktop-classic
+      - <<: *amt_row
+        entity: sensor.elitedesk_hostname
+        name: Hostname
+        icon: mdi:server-network
+      - <<: *amt_row
+        entity: sensor.elitedesk_ip_address
+        name: IP address
+        icon: mdi:ip-network
+      - <<: *amt_row
+        entity: sensor.elitedesk_cpu
+        name: CPU
+        icon: mdi:cpu-64-bit
+      - <<: *amt_row
+        entity: sensor.elitedesk_amt_firmware
+        name: AMT firmware
+        icon: mdi:chip
+      - <<: *amt_row
+        entity: sensor.elitedesk_bios_version
+        name: BIOS
+        icon: mdi:memory
+      - <<: *amt_row
+        entity: sensor.elitedesk_serial_number
+        name: Serial
+        icon: mdi:barcode
+      - <<: *amt_row
+        entity: sensor.elitedesk_system_id
+        name: System ID
+        icon: mdi:identifier
+      - <<: *amt_row
+        entity: sensor.elitedesk_provisioning_state
+        name: Provisioning state
+        icon: mdi:shield-check
+        styles:
+          <<: *amt_row_styles
+          icon:
+            - width: 22px
+            - color: >
+                [[[
+                  if (!entity) return 'var(--disabled-text-color)';
+                  const s = entity.state;
+                  if (s === 'post') return '#4caf50';
+                  if (s === 'in-progress') return '#ffa726';
+                  if (s === 'pre') return '#ef5350';
+                  return 'var(--disabled-text-color)';
+                ]]]
+      - <<: *amt_row
+        entity: sensor.elitedesk_provisioning_mode
+        name: Provisioning mode
+        icon: mdi:shield-lock
+        styles:
+          <<: *amt_row_styles
+          icon:
+            - width: 22px
+            - color: >
+                [[[
+                  if (!entity) return 'var(--disabled-text-color)';
+                  const s = entity.state;
+                  if (s === 'acm') return '#42a5f5';
+                  if (s === 'ccm') return '#26a69a';
+                  return 'var(--disabled-text-color)';
+                ]]]
+      - <<: *amt_row
+        entity: sensor.elitedesk_last_amt_event
+        name: Last event
+        icon: mdi:clipboard-text-clock
+        styles:
+          <<: *amt_row_styles
+          icon:
+            - width: 22px
+            - color: >
+                [[[ return (!entity || ['unavailable','unknown',''].includes(entity.state)) ? 'var(--disabled-text-color)' : '#ffa726'; ]]]
 
-  - type: entities
+  - type: grid
     title: More actions
-    show_header_toggle: false
-    entities:
-      - entity: button.elitedesk_soft_off
-      - entity: button.elitedesk_soft_reset
-      - entity: button.elitedesk_hard_reset
-      - entity: button.elitedesk_pxe_boot
-      - entity: button.elitedesk_refresh_status
+    columns: 3
+    square: false
+    cards:
+      - type: custom:button-card
+        entity: button.elitedesk_soft_off
+        name: Soft off
+        icon: mdi:power-standby
+        show_state: false
+        size: 30%
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.elitedesk_soft_off
+          confirmation:
+            text: Graceful shutdown (needs Intel LMS agent in OS)?
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+            - background: rgba(255,112,67,0.12)
+            - border: 1px solid rgba(255,112,67,0.35)
+          icon:
+            - color: '#ff7043'
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+      - type: custom:button-card
+        entity: button.elitedesk_soft_reset
+        name: Soft reset
+        icon: mdi:autorenew
+        show_state: false
+        size: 30%
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.elitedesk_soft_reset
+          confirmation:
+            text: Graceful reset (needs Intel LMS agent in OS)?
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+            - background: rgba(255,167,38,0.12)
+            - border: 1px solid rgba(255,167,38,0.35)
+          icon:
+            - color: '#ffa726'
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+      - type: custom:button-card
+        entity: button.elitedesk_hard_reset
+        name: Hard reset
+        icon: mdi:power-cycle
+        show_state: false
+        size: 30%
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.elitedesk_hard_reset
+          confirmation:
+            text: Abrupt reset — may cause data loss. Continue?
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+            - background: rgba(229,57,53,0.12)
+            - border: 1px solid rgba(229,57,53,0.35)
+          icon:
+            - color: '#e53935'
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+      - type: custom:button-card
+        entity: button.elitedesk_pxe_boot
+        name: PXE boot
+        icon: mdi:lan
+        show_state: false
+        size: 30%
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.elitedesk_pxe_boot
+          confirmation:
+            text: Boot from network on next power cycle?
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+            - background: rgba(126,87,194,0.12)
+            - border: 1px solid rgba(126,87,194,0.35)
+          icon:
+            - color: '#7e57c2'
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+      - type: custom:button-card
+        entity: button.elitedesk_refresh_status
+        name: Refresh
+        icon: mdi:refresh
+        show_state: false
+        size: 30%
+        tap_action:
+          action: perform-action
+          perform_action: button.press
+          target:
+            entity_id: button.elitedesk_refresh_status
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+            - background: rgba(66,165,245,0.12)
+            - border: 1px solid rgba(66,165,245,0.35)
+          icon:
+            - color: '#42a5f5'
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+      - type: custom:button-card
+        entity: input_boolean.elitedesk_wake_alarm_config
+        name: Wake alarms
+        icon: mdi:alarm
+        show_state: false
+        size: 30%
+        tap_action:
+          action: toggle
+        state:
+          - value: 'on'
+            styles:
+              card:
+                - background: rgba(255,152,0,0.22)
+                - border: 1px solid rgba(255,152,0,0.55)
+                - box-shadow: 0 0 16px rgba(255,152,0,0.25)
+              icon:
+                - color: '#ffb300'
+          - value: 'off'
+            styles:
+              card:
+                - background: rgba(255,152,0,0.12)
+                - border: 1px solid rgba(255,152,0,0.35)
+              icon:
+                - color: '#ff9800'
+        styles:
+          card:
+            - border-radius: 14px
+            - height: 84px
+          name:
+            - font-size: 13px
+            - color: var(--primary-text-color)
+
+  - type: conditional
+    conditions:
+      - entity: input_boolean.elitedesk_wake_alarm_config
+        state: 'on'
+    card:
+      type: vertical-stack
+      cards:
+        - type: entities
+          title: Wake alarms
+          show_header_toggle: false
+          entities:
+            - entity: sensor.elitedesk_next_wake
+              name: Next wake
+              icon: mdi:alarm
+        - type: horizontal-stack
+          cards:
+            - type: custom:button-card
+              entity: sensor.elitedesk_next_wake
+              name: Schedule alarm
+              icon: mdi:alarm-plus
+              show_state: false
+              size: 50%
+              tap_action:
+                action: navigate
+                navigation_path: |
+                  [[[
+                    const ent = hass.entities[entity.entity_id];
+                    if (ent && ent.device_id)
+                      return '/config/devices/dashboard/device/' + ent.device_id;
+                    return '/config/devices/dashboard';
+                  ]]]
+              styles:
+                card:
+                  - border-radius: 14px
+                  - height: 84px
+                  - background: rgba(255,152,0,0.12)
+                  - border: 1px solid rgba(255,152,0,0.35)
+                icon:
+                  - color: '#ff9800'
+                name:
+                  - font-size: 13px
+                  - color: var(--primary-text-color)
+            - type: custom:button-card
+              entity: input_boolean.elitedesk_wake_alarm_config
+              name: Close
+              icon: mdi:close
+              show_state: false
+              size: 50%
+              tap_action:
+                action: toggle
+              styles:
+                card:
+                  - border-radius: 14px
+                  - height: 84px
+                  - background: rgba(120,120,120,0.12)
+                  - border: 1px solid rgba(120,120,120,0.35)
+                icon:
+                  - color: var(--secondary-text-color)
+                name:
+                  - font-size: 13px
+                  - color: var(--primary-text-color)
+        - type: markdown
+          content: >
+            **Schedule:** opens the device page → **Configure** → **Schedule wake alarm**.
+
+            **Delete:** `button.elitedesk_delete_wake_*` buttons appear automatically for each
+            scheduled alarm — add them to this panel from the entity picker, or use **Configure**
+            → **Delete wake alarm**.
 ```
 
 Notes:
 
 - The radial gauge computes the average over the last 24h by transforming `on` → 100 and everything else → 0, then averaging. So `soft-off`, `sleep`, `hibernate`, transitions and `unknown` all count as "not on". If you want to count `sleep`/`standby` as "on", edit the `transform` line.
+- The Device list uses `custom:button-card` rows with dynamic icon colors: blue when populated, greyed out when `unavailable`/`unknown`. Provisioning state is tri-coloured (`post` green, `in-progress` amber, `pre` red) and provisioning mode is blue/teal for `acm`/`ccm`.
+- The **More actions** grid uses semantic colors per action (destructive → red, transitioning → amber, network → purple, info → blue, wake alarms → orange). All destructive actions have confirmation dialogs; `Refresh` and **Wake alarms** don't (toggle panel / harmless poll). Confirmation text is customizable.
+- **Wake alarms** toggles `input_boolean.elitedesk_wake_alarm_config` and reveals a panel below with next-wake status, a **Schedule alarm** shortcut (navigates to the device page where **Configure → Schedule wake alarm** opens the integration form), and delete-button hints.
+- YAML anchors (`&amt_row` / `<<: *amt_row`) keep the Device block compact. HA's Lovelace YAML editor parses them fine when you paste; saving via the UI will expand them (still works, just longer).
 - `history-graph` reads from HA's Recorder — make sure `sensor.elitedesk_power_state` and the two binary sensors aren't excluded from Recorder in `configuration.yaml`.
 - If you're on the Sections dashboard, replace the outer `type: vertical-stack` with `type: grid` and give each inner card an appropriate `grid_options` — the individual card configs above work unchanged.
 
@@ -517,12 +848,8 @@ Notes:
 - When KVM/IDER is active, some power transitions return "not ready" (ReturnValue 2). Guard automations with `binary_sensor.*_kvm_session_active` or the `ider_enabled` attribute.
 - Each poll issues one WSMAN GET (power) plus five enumerations (KVM, redirection, ethernet, provisioning, event log). Negligible at the default 2-min interval; still fine at the 30-second minimum on LAN.
 - The `Last AMT event` sensor enumerates `AMT_EventLogEntry` and picks the newest by `CreationTimeStamp`. AMT caps the log at ~390 records, so pagination stays cheap.
+- 
 
-
-
-## Pyscript alternative
-
-See `homeassistant/pyscript/` for an earlier Pyscript-based approach.
 
 ## License
 

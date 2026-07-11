@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import html
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from xml.etree import ElementTree
 
 import requests
@@ -13,6 +15,8 @@ from .const import PORT_HTTP, PORT_HTTPS, POWER_STATES, PROTOCOL_HTTP, RETURN_VA
 
 SCHEMA_BASE = "http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/"
 AMT_SCHEMA_BASE = "http://intel.com/wbem/wscim/1/amt-schema/1/"
+IPS_SCHEMA_BASE = "http://intel.com/wbem/wscim/1/ips-schema/1/"
+CIM_COMMON_NS = "http://schemas.dmtf.org/wbem/wscim/1/common"
 CIM_ASSOCIATED_POWER = SCHEMA_BASE + "CIM_AssociatedPowerManagementService"
 CIM_CHASSIS = SCHEMA_BASE + "CIM_Chassis"
 CIM_BIOS_ELEMENT = SCHEMA_BASE + "CIM_BIOSElement"
@@ -25,6 +29,9 @@ AMT_ETHERNET_PORT_SETTINGS = AMT_SCHEMA_BASE + "AMT_EthernetPortSettings"
 AMT_GENERAL_SETTINGS = AMT_SCHEMA_BASE + "AMT_GeneralSettings"
 AMT_SETUP_CONFIGURATION_SERVICE = AMT_SCHEMA_BASE + "AMT_SetupAndConfigurationService"
 AMT_EVENT_LOG_ENTRY = AMT_SCHEMA_BASE + "AMT_EventLogEntry"
+AMT_ALARM_CLOCK_SERVICE = AMT_SCHEMA_BASE + "AMT_AlarmClockService"
+IPS_ALARM_CLOCK_OCCURRENCE = IPS_SCHEMA_BASE + "IPS_AlarmClockOccurrence"
+WS_TRANSFER_DELETE = "http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete"
 
 BOOT_DEVICES = {
     "pxe": "Intel(r) AMT: Force PXE Boot",
@@ -47,8 +54,55 @@ def _parse_event_record(record: str) -> str | None:
     return parts[2].strip() or None
 
 
+def _parse_amt_datetime(raw: str | None) -> datetime | None:
+    """Parse either 'YYYY-MM-DDTHH:MM:SSZ' (XSD) or the CIM datetime form."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    # CIM datetime: 'YYYYMMDDHHMMSS.mmmmmm+ooo' (offset in minutes from UTC).
+    if len(raw) >= 21 and raw[14] == "." and raw[-4] in "+-":
+        try:
+            offset_min = int(raw[-4:])
+            dt = datetime.strptime(raw[:14], "%Y%m%d%H%M%S")
+            return dt.replace(tzinfo=timezone.utc) - _minutes_offset(offset_min)
+        except ValueError:
+            return None
+    return None
+
+
+def _minutes_offset(offset_min: int):
+    from datetime import timedelta
+
+    return timedelta(minutes=offset_min)
+
+
+def _interval_minutes_to_iso(minutes: int) -> str | None:
+    """AMT expects 'PdDThHmM'. Returns None for 0 (one-shot)."""
+    if minutes <= 0:
+        return None
+    days = minutes // 1440
+    hours = (minutes // 60) % 24
+    mins = minutes % 60
+    return f"P{days}DT{hours}H{mins}M"
+
+
 class AmtError(Exception):
     """Raised when an AMT operation fails."""
+
+
+@dataclass
+class AmtAlarm:
+    """A scheduled wake alarm (IPS_AlarmClockOccurrence)."""
+
+    instance_id: str
+    element_name: str | None = None
+    start_time: datetime | None = None
+    interval: str | None = None
+    delete_on_completion: bool | None = None
 
 
 @dataclass
@@ -69,6 +123,8 @@ class AmtStatus:
     provisioning_mode: str | None = None
     last_event_time: str | None = None
     last_event_description: str | None = None
+    wake_alarms: list[AmtAlarm] = field(default_factory=list)
+    next_wake_time: datetime | None = None
 
 
 @dataclass
@@ -257,6 +313,87 @@ class AmtClient:
         return body % {"uri": uri, "uuid": uuid.uuid4()}
 
     @staticmethod
+    def _add_alarm_request(
+        uri: str,
+        instance_id: str,
+        start_time_utc: str,
+        interval_iso: str | None,
+        delete_on_completion: bool,
+        element_name: str | None,
+    ) -> str:
+        # Field order and xmlns re-binding here matches the Intel/DMTF
+        # wsman-messages toolkit (used by MPS/RPS in production).
+        ips_ns = IPS_ALARM_CLOCK_OCCURRENCE
+        parts: list[str] = []
+        parts.append(
+            f'<q:InstanceID xmlns:q="{ips_ns}">{html.escape(instance_id)}</q:InstanceID>'
+        )
+        if element_name:
+            parts.append(
+                f'<q:ElementName xmlns:q="{ips_ns}">{html.escape(element_name)}</q:ElementName>'
+            )
+        parts.append(
+            f'<q:StartTime xmlns:q="{ips_ns}">'
+            f'<c:Datetime xmlns:c="{CIM_COMMON_NS}">{start_time_utc}</c:Datetime>'
+            f"</q:StartTime>"
+        )
+        if interval_iso:
+            parts.append(
+                f'<q:Interval xmlns:q="{ips_ns}">'
+                f'<c:Interval xmlns:c="{CIM_COMMON_NS}">{interval_iso}</c:Interval>'
+                f"</q:Interval>"
+            )
+        parts.append(
+            f'<q:DeleteOnCompletion xmlns:q="{ips_ns}">'
+            f'{"true" if delete_on_completion else "false"}'
+            f"</q:DeleteOnCompletion>"
+        )
+        template = "".join(parts)
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+ xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+ xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <wsa:Action s:mustUnderstand="true">{AMT_ALARM_CLOCK_SERVICE}/AddAlarm</wsa:Action>
+    <wsa:To s:mustUnderstand="true">{uri}</wsa:To>
+    <wsman:ResourceURI s:mustUnderstand="true">{AMT_ALARM_CLOCK_SERVICE}</wsman:ResourceURI>
+    <wsa:MessageID s:mustUnderstand="true">uuid:{uuid.uuid4()}</wsa:MessageID>
+    <wsa:ReplyTo>
+      <wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address>
+    </wsa:ReplyTo>
+    <wsman:SelectorSet>
+      <wsman:Selector Name="Name">Intel(r) AMT Alarm Clock Service</wsman:Selector>
+    </wsman:SelectorSet>
+  </s:Header>
+  <s:Body>
+    <p:AddAlarm_INPUT xmlns:p="{AMT_ALARM_CLOCK_SERVICE}">
+      <p:AlarmTemplate>{template}</p:AlarmTemplate>
+    </p:AddAlarm_INPUT>
+  </s:Body>
+</s:Envelope>"""
+
+    @staticmethod
+    def _delete_alarm_request(uri: str, instance_id: str) -> str:
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
+ xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+ xmlns:wsman="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+  <s:Header>
+    <wsa:Action s:mustUnderstand="true">{WS_TRANSFER_DELETE}</wsa:Action>
+    <wsa:To s:mustUnderstand="true">{uri}</wsa:To>
+    <wsman:ResourceURI s:mustUnderstand="true">{IPS_ALARM_CLOCK_OCCURRENCE}</wsman:ResourceURI>
+    <wsa:MessageID s:mustUnderstand="true">uuid:{uuid.uuid4()}</wsa:MessageID>
+    <wsa:ReplyTo>
+      <wsa:Address>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:Address>
+    </wsa:ReplyTo>
+    <wsman:SelectorSet>
+      <wsman:Selector Name="InstanceID">{html.escape(instance_id)}</wsman:Selector>
+    </wsman:SelectorSet>
+  </s:Header>
+  <s:Body/>
+</s:Envelope>"""
+
+    @staticmethod
     def _enumerate_request(uri: str, resource: str) -> str:
         body = """<?xml version="1.0" encoding="UTF-8"?>
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
@@ -375,6 +512,7 @@ class AmtClient:
         link_up, ip_address, mac_address = self._fetch_ethernet()
         prov_state, prov_mode = self._fetch_provisioning()
         last_event_time, last_event_desc = self._fetch_last_event()
+        wake_alarms, next_wake = self._fetch_wake_alarms()
 
         return AmtStatus(
             power_state=power_state,
@@ -391,6 +529,8 @@ class AmtClient:
             provisioning_mode=prov_mode,
             last_event_time=last_event_time,
             last_event_description=last_event_desc,
+            wake_alarms=wake_alarms,
+            next_wake_time=next_wake,
         )
 
     def _fetch_kvm_state(self) -> tuple[str | None, bool | None]:
@@ -489,6 +629,45 @@ class AmtClient:
                 pass
         return state, mode
 
+    def _fetch_wake_alarms(self) -> tuple[list[AmtAlarm], datetime | None]:
+        """Return (alarms, earliest_future_start_time). Empty on AMT < 8.0."""
+        try:
+            items = self._enumerate(IPS_ALARM_CLOCK_OCCURRENCE)
+        except Exception:
+            return [], None
+        alarms: list[AmtAlarm] = []
+        for item in items:
+            instance_id = self._child_text(item, "InstanceID")
+            if not instance_id:
+                continue
+            # StartTime wraps an inner <Datetime>; Interval wraps an inner <Interval>.
+            # _child_text skips whitespace-only outer wrappers and returns the inner.
+            start_raw = self._child_text(item, "Datetime")
+            interval_raw = None
+            for child in item.iter():
+                if (
+                    self._local_name(child) == "Interval"
+                    and child.text is not None
+                    and child.text.strip()
+                ):
+                    interval_raw = child.text.strip()
+            del_raw = self._child_text(item, "DeleteOnCompletion")
+            alarms.append(
+                AmtAlarm(
+                    instance_id=instance_id,
+                    element_name=self._child_text(item, "ElementName"),
+                    start_time=_parse_amt_datetime(start_raw),
+                    interval=interval_raw,
+                    delete_on_completion=(
+                        del_raw.strip().lower() == "true" if del_raw else None
+                    ),
+                )
+            )
+        now = datetime.now(timezone.utc)
+        future = [a.start_time for a in alarms if a.start_time and a.start_time > now]
+        next_wake = min(future) if future else None
+        return alarms, next_wake
+
     def _fetch_last_event(self) -> tuple[str | None, str | None]:
         """Return (iso_timestamp, description) of the newest AMT event."""
         try:
@@ -534,6 +713,58 @@ class AmtClient:
         """Set next boot to PXE and reboot."""
         self.set_next_boot("pxe")
         self.set_power("reboot")
+
+    def add_wake_alarm(
+        self,
+        start_time: datetime,
+        instance_id: str,
+        interval_minutes: int = 0,
+        delete_on_completion: bool = True,
+        element_name: str | None = None,
+    ) -> None:
+        """Schedule a firmware wake. Requires AMT >= 8.0."""
+        if not instance_id:
+            raise AmtError("instance_id must not be empty")
+        if len(instance_id) > 32:
+            raise AmtError("instance_id must be at most 32 characters")
+        if interval_minutes < 0:
+            raise AmtError("interval_minutes must be >= 0")
+        # AMT rejects StartTime <= current-firmware-time. Truncate to minute
+        # boundary and always send UTC (Intel spec: 'yyyy-mm-ddThh:mm:00Z').
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        start_utc = start_time.astimezone(timezone.utc).replace(
+            second=0, microsecond=0
+        )
+        if start_utc <= datetime.now(timezone.utc):
+            raise AmtError(
+                f"StartTime {start_utc.isoformat()} is not in the future"
+            )
+        payload = self._add_alarm_request(
+            self.uri,
+            instance_id,
+            start_utc.strftime("%Y-%m-%dT%H:%M:00Z"),
+            _interval_minutes_to_iso(interval_minutes),
+            delete_on_completion,
+            element_name,
+        )
+        resp = self._post(payload)
+        return_value = self._find_return_value(resp.content)
+        if return_value is not None and return_value != 0:
+            reason = RETURN_VALUES.get(return_value, f"code {return_value}")
+            raise AmtError(
+                f"AddAlarm failed: ReturnValue {return_value} ({reason})"
+            )
+
+    def list_wake_alarms(self) -> list[AmtAlarm]:
+        """List currently scheduled wake alarms."""
+        return self._fetch_wake_alarms()[0]
+
+    def delete_wake_alarm(self, instance_id: str) -> None:
+        """Delete a wake alarm by InstanceID."""
+        if not instance_id:
+            raise AmtError("instance_id must not be empty")
+        self._post(self._delete_alarm_request(self.uri, instance_id))
 
     def _enumerate(self, resource: str) -> list[ElementTree.Element]:
         """Enumerate a CIM class, following WS-Enumeration pagination."""

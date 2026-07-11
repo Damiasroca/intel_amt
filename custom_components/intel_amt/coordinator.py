@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -55,6 +55,32 @@ class IntelAmtCoordinator(DataUpdateCoordinator[AmtStatus]):
     async def async_pxe_boot(self) -> None:
         """PXE boot and refresh coordinator data."""
         await self.hass.async_add_executor_job(self.client.pxe_boot)
+        await self.async_request_refresh()
+
+    async def async_add_wake_alarm(
+        self,
+        start_time: datetime,
+        instance_id: str,
+        interval_minutes: int = 0,
+        delete_on_completion: bool = True,
+        element_name: str | None = None,
+    ) -> None:
+        """Schedule a firmware wake and refresh."""
+        await self.hass.async_add_executor_job(
+            self.client.add_wake_alarm,
+            start_time,
+            instance_id,
+            interval_minutes,
+            delete_on_completion,
+            element_name,
+        )
+        await self.async_request_refresh()
+
+    async def async_delete_wake_alarm(self, instance_id: str) -> None:
+        """Delete a wake alarm and refresh."""
+        await self.hass.async_add_executor_job(
+            self.client.delete_wake_alarm, instance_id
+        )
         await self.async_request_refresh()
 
 

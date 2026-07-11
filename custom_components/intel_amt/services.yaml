@@ -1,0 +1,57 @@
+add_wake_alarm:
+  name: Add wake alarm
+  description: Schedule a firmware wake on the AMT device (requires AMT 8.0+).
+  target:
+    device:
+      integration: intel_amt
+  fields:
+    start_time:
+      name: Wake time
+      description: When the machine should wake. Must be in the future.
+      required: true
+      selector:
+        datetime:
+    instance_id:
+      name: Alarm ID
+      description: Unique identifier, max 32 characters. Used to delete or replace the alarm.
+      required: true
+      example: weekday-morning
+      selector:
+        text:
+    element_name:
+      name: Label
+      description: Optional friendly name for the alarm.
+      required: false
+      selector:
+        text:
+    interval_minutes:
+      name: Repeat interval (minutes)
+      description: 0 for one-shot. 1440 for daily.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 525600
+          mode: box
+    delete_on_completion:
+      name: Delete after wake
+      description: Remove the alarm after it fires.
+      required: false
+      default: true
+      selector:
+        boolean:
+
+delete_wake_alarm:
+  name: Delete wake alarm
+  description: Remove a scheduled firmware wake alarm.
+  target:
+    device:
+      integration: intel_amt
+  fields:
+    instance_id:
+      name: Alarm ID
+      description: InstanceID of the alarm to delete (see Next wake sensor attributes).
+      required: true
+      selector:
+        text:

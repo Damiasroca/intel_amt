@@ -8,9 +8,11 @@ from typing import Any
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .amt_client import AmtAlarm
 from .const import DOMAIN
 from .coordinator import IntelAmtCoordinator
 from .entity import IntelAmtEntity
@@ -120,6 +122,9 @@ async def async_setup_entry(
     async_add_entities(
         IntelAmtButton(coordinator, description) for description in BUTTONS
     )
+    alarm_manager = IntelAmtWakeAlarmButtonManager(coordinator, async_add_entities)
+    entry.async_on_unload(coordinator.async_add_listener(alarm_manager.async_update))
+    alarm_manager.async_update()
 
 
 class IntelAmtButton(IntelAmtEntity, ButtonEntity):
@@ -139,3 +144,64 @@ class IntelAmtButton(IntelAmtEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         await self._description.press_fn(self.coordinator)
+
+
+class IntelAmtDeleteWakeAlarmButton(IntelAmtEntity, ButtonEntity):
+    """Delete a single scheduled wake alarm."""
+
+    _attr_icon = "mdi:alarm-off"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: IntelAmtCoordinator, alarm: AmtAlarm) -> None:
+        super().__init__(coordinator)
+        self._instance_id = alarm.instance_id
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_delete_wake_{alarm.instance_id}"
+        )
+        label = alarm.element_name or alarm.instance_id
+        if alarm.start_time is not None:
+            self._attr_name = f"Delete wake: {label}"
+        else:
+            self._attr_name = f"Delete wake: {label}"
+
+    async def async_press(self) -> None:
+        """Delete this wake alarm."""
+        await self.coordinator.async_delete_wake_alarm(self._instance_id)
+
+
+class IntelAmtWakeAlarmButtonManager:
+    """Create and remove delete buttons as alarms change."""
+
+    def __init__(
+        self,
+        coordinator: IntelAmtCoordinator,
+        async_add_entities: AddEntitiesCallback,
+    ) -> None:
+        self.coordinator = coordinator
+        self._async_add_entities = async_add_entities
+        self._entities: dict[str, IntelAmtDeleteWakeAlarmButton] = {}
+
+    @callback
+    def async_update(self) -> None:
+        """Sync delete buttons with coordinator alarm list."""
+        if not self.coordinator.last_update_success or self.coordinator.data is None:
+            return
+
+        alarms = {
+            alarm.instance_id: alarm for alarm in self.coordinator.data.wake_alarms
+        }
+
+        for instance_id in list(self._entities):
+            if instance_id not in alarms:
+                entity = self._entities.pop(instance_id)
+                entity.hass.async_create_task(entity.async_remove())
+
+        to_add: list[IntelAmtDeleteWakeAlarmButton] = []
+        for instance_id, alarm in alarms.items():
+            if instance_id not in self._entities:
+                entity = IntelAmtDeleteWakeAlarmButton(self.coordinator, alarm)
+                self._entities[instance_id] = entity
+                to_add.append(entity)
+
+        if to_add:
+            self._async_add_entities(to_add)
