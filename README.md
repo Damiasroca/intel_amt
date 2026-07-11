@@ -55,6 +55,7 @@ Each configured device gets:
 |--------|-------------|
 | `sensor.*_power_state` | Current state + `available_transitions` attribute |
 | `switch.*_power` | On / soft-off |
+| `button.*_power_on` | Power on |
 | `button.*_hard_off` | Abrupt shutdown |
 | `button.*_soft_off` | Graceful shutdown (needs Intel LMS) |
 | `button.*_hard_reset` | Abrupt reset |

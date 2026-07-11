@@ -48,6 +48,7 @@
       }
     },
     "button": {
+      "power_on": { "name": "Power on" },
       "hard_off": { "name": "Hard off" },
       "soft_off": { "name": "Soft off" },
       "hard_reset": { "name": "Hard reset" },
