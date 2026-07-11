@@ -12,7 +12,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .amt_client import AmtStatus
+from .amt_client import AmtAlarm, AmtStatus
 from .const import DOMAIN
 from .coordinator import IntelAmtCoordinator
 from .entity import IntelAmtEntity
@@ -120,6 +120,7 @@ async def async_setup_entry(
     for status_description in STATUS_SENSORS:
         entities.append(IntelAmtStatusSensor(coordinator, status_description))
     entities.append(IntelAmtLastEventSensor(coordinator))
+    entities.append(IntelAmtNextWakeSensor(coordinator))
     async_add_entities(entities)
 
 
@@ -254,3 +255,47 @@ class IntelAmtLastEventSensor(IntelAmtEntity, SensorEntity):
             and self.coordinator.data is not None
             and self.coordinator.data.last_event_time is not None
         )
+
+
+def _alarm_to_dict(alarm: AmtAlarm) -> dict:
+    """Serialize an AmtAlarm for sensor attributes."""
+    return {
+        "instance_id": alarm.instance_id,
+        "element_name": alarm.element_name,
+        "start_time": alarm.start_time.isoformat() if alarm.start_time else None,
+        "interval": alarm.interval,
+        "delete_on_completion": alarm.delete_on_completion,
+    }
+
+
+class IntelAmtNextWakeSensor(IntelAmtEntity, SensorEntity):
+    """Earliest scheduled firmware wake time and full alarm list."""
+
+    _attr_translation_key = "next_wake"
+    _attr_icon = "mdi:alarm"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: IntelAmtCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_next_wake"
+
+    @property
+    def native_value(self) -> datetime | None:
+        if not self.coordinator.last_update_success or self.coordinator.data is None:
+            return None
+        return self.coordinator.data.next_wake_time
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.last_update_success or self.coordinator.data is None:
+            return {}
+        alarms = self.coordinator.data.wake_alarms
+        return {
+            "wake_alarm_count": len(alarms),
+            "wake_alarms": [_alarm_to_dict(alarm) for alarm in alarms],
+        }
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success

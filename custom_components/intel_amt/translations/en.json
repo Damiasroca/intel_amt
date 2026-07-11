@@ -24,10 +24,45 @@
     "step": {
       "init": {
         "title": "Intel AMT options",
+        "menu_options": {
+          "scan_interval": "Poll interval",
+          "add_wake_alarm": "Schedule wake alarm",
+          "manage_wake_alarms": "Delete wake alarm"
+        }
+      },
+      "scan_interval": {
+        "title": "Poll interval",
         "data": {
           "scan_interval": "Status poll interval (seconds)"
         }
+      },
+      "add_wake_alarm": {
+        "title": "Schedule wake alarm",
+        "description": "Schedule a firmware wake via AMT Alarm Clock (requires AMT 8.0+). The machine must be off or in a deep sleep state for the wake to take effect.",
+        "data": {
+          "start_time": "Wake time",
+          "instance_id": "Alarm ID",
+          "element_name": "Label",
+          "interval_minutes": "Repeat interval (minutes, 0 = one-shot)",
+          "delete_on_completion": "Delete alarm after it fires"
+        }
+      },
+      "manage_wake_alarms": {
+        "title": "Delete wake alarm",
+        "description": "Remove a scheduled firmware wake alarm.",
+        "data": {
+          "instance_id": "Alarm to delete"
+        }
       }
+    },
+    "error": {
+      "cannot_add": "Failed to schedule wake alarm. Check that the time is in the future and the alarm ID is unique (max 32 characters).",
+      "cannot_delete": "Failed to delete wake alarm."
+    },
+    "abort": {
+      "alarm_scheduled": "Wake alarm scheduled.",
+      "alarm_deleted": "Wake alarm deleted.",
+      "no_wake_alarms": "No wake alarms are currently scheduled on this device."
     }
   },
   "entity": {
@@ -43,7 +78,8 @@
       "ip_address": { "name": "IP address" },
       "provisioning_state": { "name": "Provisioning state" },
       "provisioning_mode": { "name": "Provisioning mode" },
-      "last_event": { "name": "Last AMT event" }
+      "last_event": { "name": "Last AMT event" },
+      "next_wake": { "name": "Next wake" }
     },
     "binary_sensor": {
       "kvm_active": { "name": "KVM session active" },
