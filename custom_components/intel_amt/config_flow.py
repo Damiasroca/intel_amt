@@ -100,14 +100,11 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry) -> OptionsFlow:
         """Get the options flow."""
-        return IntelAmtOptionsFlow(config_entry)
+        return IntelAmtOptionsFlow()
 
 
 class IntelAmtOptionsFlow(OptionsFlow):
     """Handle options for Intel AMT."""
-
-    def __init__(self, config_entry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
