@@ -18,7 +18,13 @@ CIM_CHASSIS = SCHEMA_BASE + "CIM_Chassis"
 CIM_BIOS_ELEMENT = SCHEMA_BASE + "CIM_BIOSElement"
 CIM_SOFTWARE_IDENTITY = SCHEMA_BASE + "CIM_SoftwareIdentity"
 CIM_KVM_SAP = SCHEMA_BASE + "CIM_KVMRedirectionSAP"
+CIM_CHIP = SCHEMA_BASE + "CIM_Chip"
+CIM_COMPUTER_SYSTEM_PACKAGE = SCHEMA_BASE + "CIM_ComputerSystemPackage"
 AMT_REDIRECTION_SERVICE = AMT_SCHEMA_BASE + "AMT_RedirectionService"
+AMT_ETHERNET_PORT_SETTINGS = AMT_SCHEMA_BASE + "AMT_EthernetPortSettings"
+AMT_GENERAL_SETTINGS = AMT_SCHEMA_BASE + "AMT_GeneralSettings"
+AMT_SETUP_CONFIGURATION_SERVICE = AMT_SCHEMA_BASE + "AMT_SetupAndConfigurationService"
+AMT_EVENT_LOG_ENTRY = AMT_SCHEMA_BASE + "AMT_EventLogEntry"
 
 BOOT_DEVICES = {
     "pxe": "Intel(r) AMT: Force PXE Boot",
@@ -26,7 +32,19 @@ BOOT_DEVICES = {
     "cd": "Intel(r) AMT: Force CD/DVD Boot",
 }
 
+# AMT_SetupAndConfigurationService value maps.
+PROVISIONING_STATES = {0: "pre", 1: "in-progress", 2: "post"}
+PROVISIONING_MODES = {1: "acm", 3: "ccm"}
+
 FRIENDLY = {value: name for name, value in POWER_STATES.items()}
+
+
+def _parse_event_record(record: str) -> str | None:
+    """AMT_EventLogEntry.RecordData format: ';string Source;string Description'."""
+    parts = record.split(";")
+    if len(parts) < 3:
+        return None
+    return parts[2].strip() or None
 
 
 class AmtError(Exception):
@@ -44,6 +62,13 @@ class AmtStatus:
     redirection_state: str | None = None
     sol_enabled: bool | None = None
     ider_enabled: bool | None = None
+    link_up: bool | None = None
+    ip_address: str | None = None
+    mac_address: str | None = None
+    provisioning_state: str | None = None
+    provisioning_mode: str | None = None
+    last_event_time: str | None = None
+    last_event_description: str | None = None
 
 
 @dataclass
@@ -56,6 +81,10 @@ class AmtDeviceInfo:
     chassis_version: str | None = None
     bios_version: str | None = None
     amt_version: str | None = None
+    hostname: str | None = None
+    domain_name: str | None = None
+    cpu_model: str | None = None
+    platform_guid: str | None = None
 
 
 class AmtClient:
@@ -343,6 +372,9 @@ class AmtClient:
 
         kvm_state, kvm_active = self._fetch_kvm_state()
         redirection_state, sol, ider = self._fetch_redirection_state()
+        link_up, ip_address, mac_address = self._fetch_ethernet()
+        prov_state, prov_mode = self._fetch_provisioning()
+        last_event_time, last_event_desc = self._fetch_last_event()
 
         return AmtStatus(
             power_state=power_state,
@@ -352,6 +384,13 @@ class AmtClient:
             redirection_state=redirection_state,
             sol_enabled=sol,
             ider_enabled=ider,
+            link_up=link_up,
+            ip_address=ip_address,
+            mac_address=mac_address,
+            provisioning_state=prov_state,
+            provisioning_mode=prov_mode,
+            last_event_time=last_event_time,
+            last_event_description=last_event_desc,
         )
 
     def _fetch_kvm_state(self) -> tuple[str | None, bool | None]:
@@ -401,6 +440,72 @@ class AmtClient:
             name = "sol+ider"
         return name, sol, ider
 
+    def _fetch_ethernet(self) -> tuple[bool | None, str | None, str | None]:
+        """Return (link_up, ip_address, mac_address) for the wired AMT NIC."""
+        try:
+            items = self._enumerate(AMT_ETHERNET_PORT_SETTINGS)
+        except Exception:
+            return None, None, None
+        if not items:
+            return None, None, None
+        # Prefer the wired port (InstanceID ends in " 0"); fall back to first.
+        primary = items[0]
+        for item in items:
+            instance = self._child_text(item, "InstanceID") or ""
+            if instance.endswith(" 0"):
+                primary = item
+                break
+        link_text = self._child_text(primary, "LinkIsUp")
+        link_up: bool | None = None
+        if link_text:
+            link_up = link_text.strip().lower() == "true"
+        return (
+            link_up,
+            self._child_text(primary, "IPAddress"),
+            self._child_text(primary, "MACAddress"),
+        )
+
+    def _fetch_provisioning(self) -> tuple[str | None, str | None]:
+        """Return (provisioning_state, provisioning_mode) names."""
+        try:
+            items = self._enumerate(AMT_SETUP_CONFIGURATION_SERVICE)
+        except Exception:
+            return None, None
+        if not items:
+            return None, None
+        state_text = self._child_text(items[0], "ProvisioningState")
+        mode_text = self._child_text(items[0], "ProvisioningMode")
+        state: str | None = None
+        mode: str | None = None
+        if state_text is not None:
+            try:
+                state = PROVISIONING_STATES.get(int(state_text), f"state-{state_text}")
+            except ValueError:
+                pass
+        if mode_text is not None:
+            try:
+                mode = PROVISIONING_MODES.get(int(mode_text), f"mode-{mode_text}")
+            except ValueError:
+                pass
+        return state, mode
+
+    def _fetch_last_event(self) -> tuple[str | None, str | None]:
+        """Return (iso_timestamp, description) of the newest AMT event."""
+        try:
+            items = self._enumerate(AMT_EVENT_LOG_ENTRY)
+        except Exception:
+            return None, None
+        newest_time: str | None = None
+        newest_desc: str | None = None
+        for item in items:
+            time_text = self._child_text(item, "Datetime")
+            if not time_text:
+                continue
+            if newest_time is None or time_text > newest_time:
+                newest_time = time_text
+                newest_desc = _parse_event_record(self._child_text(item, "RecordData") or "")
+        return newest_time, newest_desc
+
     def set_power(self, action: str) -> None:
         """Request a power state change."""
         if action not in POWER_STATES:
@@ -431,17 +536,27 @@ class AmtClient:
         self.set_power("reboot")
 
     def _enumerate(self, resource: str) -> list[ElementTree.Element]:
-        """Enumerate a CIM class and return instance elements (single Pull)."""
+        """Enumerate a CIM class, following WS-Enumeration pagination."""
         enum_resp = self._post(self._enumerate_request(self.uri, resource))
         context = self._find_in_xml(enum_resp.content, "EnumerationContext")
-        if not context:
-            return []
-        pull_resp = self._post(self._pull_request(self.uri, resource, context))
-        doc = ElementTree.fromstring(pull_resp.content)
-        for elem in doc.iter():
-            if self._local_name(elem) == "Items":
-                return list(elem)
-        return []
+        items: list[ElementTree.Element] = []
+        while context:
+            pull_resp = self._post(self._pull_request(self.uri, resource, context))
+            doc = ElementTree.fromstring(pull_resp.content)
+            end_of_sequence = False
+            next_context: str | None = None
+            for elem in doc.iter():
+                local = self._local_name(elem)
+                if local == "Items":
+                    items.extend(list(elem))
+                elif local == "EndOfSequence":
+                    end_of_sequence = True
+                elif local == "EnumerationContext" and elem.text:
+                    next_context = elem.text.strip()
+            if end_of_sequence:
+                break
+            context = next_context
+        return items
 
     def get_device_info(self) -> AmtDeviceInfo:
         """One-time hardware/firmware inventory. Each block fails softly."""
@@ -470,6 +585,33 @@ class AmtClient:
                     version = self._child_text(item, "VersionString")
                     if version:
                         info.amt_version = version
+                        break
+        except Exception:
+            pass
+        try:
+            general_items = self._enumerate(AMT_GENERAL_SETTINGS)
+            if general_items:
+                info.hostname = self._child_text(general_items[0], "HostName")
+                info.domain_name = self._child_text(general_items[0], "DomainName")
+        except Exception:
+            pass
+        try:
+            pkg_items = self._enumerate(CIM_COMPUTER_SYSTEM_PACKAGE)
+            if pkg_items:
+                guid = self._child_text(pkg_items[0], "PlatformGUID")
+                if guid:
+                    info.platform_guid = guid.lower()
+        except Exception:
+            pass
+        try:
+            # CIM_Chip enumeration returns CPU chips *and* memory (as CIM_PhysicalMemory).
+            # CPU entries carry a Tag like "CPU 0".
+            for chip in self._enumerate(CIM_CHIP):
+                tag = self._child_text(chip, "Tag") or ""
+                if tag.upper().startswith("CPU"):
+                    version = self._child_text(chip, "Version")
+                    if version:
+                        info.cpu_model = version.strip()
                         break
         except Exception:
             pass
