@@ -17,7 +17,10 @@ Reference: [rgl/intel-amt-notes](https://github.com/rgl/intel-amt-notes)
 - PXE boot (one-time network boot)
 - Power state sensor with `available_transitions` attribute
 - Live KVM session + SOL/IDER redirection status as binary sensors
-- Real device identity on the HA device page (manufacturer, model, serial, BIOS, AMT firmware)
+- AMT NIC link status, IP and MAC address exposed for automations
+- Provisioning state / mode diagnostic sensors (post-provisioning, ACM/CCM)
+- Last AMT event log entry as a timestamp sensor (with description attribute)
+- Real device identity on the HA device page (manufacturer, model, serial, BIOS, AMT firmware, CPU, hostname, platform GUID)
 - Diagnostic sensors for the same info so it can be used on Lovelace cards and automations
 - UI config flow — no YAML editing required
 - Options for poll interval
@@ -71,6 +74,26 @@ Each configured device gets:
 | `binary_sensor.*_kvm_session_active` | On when a KVM session is currently connected; `kvm_state` attribute exposes raw state (`connected` / `listening` / `disabled`) |
 | `binary_sensor.*_redirection_enabled` | On when AMT is accepting SOL or IDER connections; `sol_enabled` / `ider_enabled` / `redirection_state` attributes for fine-grained automations |
 
+### Network (per poll)
+
+| Entity | Description |
+|--------|-------------|
+| `binary_sensor.*_network_link` | On when the AMT NIC reports `LinkIsUp=true`; `ip_address` and `mac_address` exposed as attributes |
+| `sensor.*_ip_address` | Current AMT-side IP address (from `AMT_EthernetPortSettings`, wired port preferred) |
+
+### Provisioning (per poll, diagnostic)
+
+| Entity | Description |
+|--------|-------------|
+| `sensor.*_provisioning_state` | `pre` / `in-progress` / `post` (post = normal operating state) |
+| `sensor.*_provisioning_mode` | `acm` (Admin Control Mode) or `ccm` (Client Control Mode) |
+
+### Event log (per poll, diagnostic)
+
+| Entity | Description |
+|--------|-------------|
+| `sensor.*_last_amt_event` | Timestamp of the newest `AMT_EventLogEntry`; parsed source/description exposed as `description` attribute (e.g. `Starting operating system boot process.`) |
+
 ### Hardware / firmware info (diagnostic, read once at setup)
 
 | Entity | Description |
@@ -79,15 +102,93 @@ Each configured device gets:
 | `sensor.*_serial_number` | Chassis serial |
 | `sensor.*_amt_firmware` | AMT firmware version (e.g. `12.0.35.1450`) |
 | `sensor.*_bios_version` | BIOS version string |
+| `sensor.*_hostname` | AMT hostname (from `AMT_GeneralSettings`) |
+| `sensor.*_cpu` | CPU model string (from `CIM_Chip`, e.g. `Intel(R) Core(TM) i5-9600T CPU @ 2.30GHz`) |
+| `sensor.*_system_id` | Platform GUID / SMBIOS UUID (from `CIM_ComputerSystemPackage`) |
 
 The same identity values are also shown on the Home Assistant device page (Manufacturer, Model, Serial number, Hardware version, Firmware version), populated from the same one-time WSMAN inventory fetch.
+
+## Dashboard example
+
+A copy-pasteable Lovelace card that groups every entity from a single AMT device into a coherent panel. Uses only built-in HA cards (no custom-card install).
+
+**Replace `elitedesk` with your device's entity slug** — pick any entity under Settings → Devices & services → Intel AMT and copy the prefix before `_power_state`.
+
+```yaml
+type: vertical-stack
+title: Intel AMT — EliteDesk
+cards:
+  - type: entities
+    entities:
+      - entity: sensor.elitedesk_power_state
+        name: State
+        icon: mdi:power-plug
+      - entity: switch.elitedesk_power
+        name: Power switch
+  - type: horizontal-stack
+    cards:
+      - type: button
+        entity: button.elitedesk_power_on
+        icon: mdi:power
+        name: On
+        show_state: false
+      - type: button
+        entity: button.elitedesk_reboot
+        icon: mdi:restart
+        name: Reboot
+        show_state: false
+      - type: button
+        entity: button.elitedesk_hard_off
+        icon: mdi:power-off
+        name: Hard off
+        show_state: false
+  - type: entities
+    title: Redirection status
+    entities:
+      - entity: binary_sensor.elitedesk_kvm_session_active
+        name: KVM session
+      - entity: binary_sensor.elitedesk_redirection_enabled
+        name: SOL / IDER enabled
+  - type: entities
+    title: Network
+    entities:
+      - entity: binary_sensor.elitedesk_network_link
+        name: Link
+      - entity: sensor.elitedesk_ip_address
+        name: IP address
+  - type: entities
+    title: More actions
+    show_header_toggle: false
+    entities:
+      - entity: button.elitedesk_soft_off
+      - entity: button.elitedesk_soft_reset
+      - entity: button.elitedesk_hard_reset
+      - entity: button.elitedesk_pxe_boot
+      - entity: button.elitedesk_refresh_status
+  - type: entities
+    title: Device info
+    entities:
+      - entity: sensor.elitedesk_model
+      - entity: sensor.elitedesk_serial_number
+      - entity: sensor.elitedesk_hostname
+      - entity: sensor.elitedesk_cpu
+      - entity: sensor.elitedesk_amt_firmware
+      - entity: sensor.elitedesk_bios_version
+      - entity: sensor.elitedesk_system_id
+      - entity: sensor.elitedesk_provisioning_state
+      - entity: sensor.elitedesk_provisioning_mode
+      - entity: sensor.elitedesk_last_amt_event
+```
+
+To use it: **Dashboard → Edit → Add card → Manual → paste the YAML above → Save**.
 
 ## Notes
 
 - HA must run on a **different machine** on the LAN — a host cannot reach its own AMT.
 - **Soft-off / soft-reset** require the Intel LMS agent in the OS. Use hard off/reset otherwise.
 - When KVM/IDER is active, some power transitions return "not ready" (ReturnValue 2). Guard automations with `binary_sensor.*_kvm_session_active` or the `ider_enabled` attribute.
-- Poll adds three WSMAN queries per interval (power + KVM + redirection). Negligible at the default 2-min interval; still fine at the 30-second minimum.
+- Each poll issues one WSMAN GET (power) plus five enumerations (KVM, redirection, ethernet, provisioning, event log). Negligible at the default 2-min interval; still fine at the 30-second minimum on LAN.
+- The `Last AMT event` sensor enumerates `AMT_EventLogEntry` and picks the newest by `CreationTimeStamp`. AMT caps the log at ~390 records, so pagination stays cheap.
 
 ## Pyscript alternative
 

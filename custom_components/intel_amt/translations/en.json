@@ -36,11 +36,19 @@
       "model": { "name": "Model" },
       "serial_number": { "name": "Serial number" },
       "amt_firmware": { "name": "AMT firmware" },
-      "bios_version": { "name": "BIOS version" }
+      "bios_version": { "name": "BIOS version" },
+      "hostname": { "name": "Hostname" },
+      "cpu": { "name": "CPU" },
+      "system_id": { "name": "System ID" },
+      "ip_address": { "name": "IP address" },
+      "provisioning_state": { "name": "Provisioning state" },
+      "provisioning_mode": { "name": "Provisioning mode" },
+      "last_event": { "name": "Last AMT event" }
     },
     "binary_sensor": {
       "kvm_active": { "name": "KVM session active" },
-      "redirection_enabled": { "name": "Redirection enabled" }
+      "redirection_enabled": { "name": "Redirection enabled" },
+      "link_up": { "name": "Network link" }
     },
     "switch": {
       "power": {

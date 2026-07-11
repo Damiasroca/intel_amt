@@ -64,6 +64,21 @@ def _redirection_attrs(coordinator: IntelAmtCoordinator) -> dict:
     }
 
 
+def _link_is_on(coordinator: IntelAmtCoordinator) -> bool | None:
+    if not coordinator.last_update_success or coordinator.data is None:
+        return None
+    return coordinator.data.link_up
+
+
+def _link_attrs(coordinator: IntelAmtCoordinator) -> dict:
+    if coordinator.data is None:
+        return {}
+    return {
+        "ip_address": coordinator.data.ip_address,
+        "mac_address": coordinator.data.mac_address,
+    }
+
+
 BINARY_SENSORS: tuple[IntelAmtBinarySensorDescription, ...] = (
     IntelAmtBinarySensorDescription(
         key="kvm_active",
@@ -80,6 +95,15 @@ BINARY_SENSORS: tuple[IntelAmtBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         is_on_fn=_redirection_is_on,
         attributes_fn=_redirection_attrs,
+    ),
+    IntelAmtBinarySensorDescription(
+        key="link_up",
+        translation_key="link_up",
+        icon="mdi:ethernet",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=_link_is_on,
+        attributes_fn=_link_attrs,
     ),
 )
 
