@@ -79,7 +79,8 @@
       "provisioning_state": { "name": "Provisioning state" },
       "provisioning_mode": { "name": "Provisioning mode" },
       "last_event": { "name": "Last AMT event" },
-      "next_wake": { "name": "Next wake" }
+      "next_wake": { "name": "Next wake" },
+      "power_uptime_24h": { "name": "Powered on (24h)" }
     },
     "binary_sensor": {
       "kvm_active": { "name": "KVM session active" },
