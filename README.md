@@ -476,7 +476,7 @@ cards:
       colors:
         - '#4caf50'
     series:
-      - entity: sensor.elitedesk_power_uptime_24h
+      - entity: sensor.elitedesk_powered_on_24h
         name: On-time
         color: '#4caf50'
         min: 0
