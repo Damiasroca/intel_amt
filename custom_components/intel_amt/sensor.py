@@ -6,16 +6,19 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.const import PERCENTAGE, EntityCategory
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .amt_client import AmtAlarm, AmtStatus
 from .const import DOMAIN
 from .coordinator import IntelAmtCoordinator
 from .entity import IntelAmtEntity
+from .uptime import UPTIME_WINDOW, compute_power_uptime, uptime_ratio_percent
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,7 +116,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up Intel AMT sensors."""
     coordinator: IntelAmtCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SensorEntity] = [IntelAmtPowerSensor(coordinator)]
+    power_sensor = IntelAmtPowerSensor(coordinator)
+    entities: list[SensorEntity] = [
+        power_sensor,
+        IntelAmtPowerUptimeSensor(hass, coordinator, power_sensor),
+    ]
     for description in INFO_SENSORS:
         if description.value_fn(coordinator) is not None:
             entities.append(IntelAmtInfoSensor(coordinator, description))
@@ -154,6 +161,88 @@ class IntelAmtPowerSensor(IntelAmtEntity, SensorEntity):
     def available(self) -> bool:
         """Return availability."""
         return self.coordinator.last_update_success
+
+
+class IntelAmtPowerUptimeSensor(IntelAmtEntity, SensorEntity):
+    """Percentage of the last 24h spent in the powered-on state."""
+
+    _attr_translation_key = "power_uptime_24h"
+    _attr_icon = "mdi:chart-donut"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: IntelAmtCoordinator,
+        power_sensor: IntelAmtPowerSensor,
+    ) -> None:
+        super().__init__(coordinator)
+        self.hass = hass
+        self._power_sensor = power_sensor
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_power_uptime_24h"
+        self._attr_available = False
+
+    async def async_added_to_hass(self) -> None:
+        """Refresh when the power sensor changes or on coordinator poll."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [self._power_sensor.entity_id], self._async_power_state_changed
+            )
+        )
+        await self._async_update_uptime()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute uptime on each status poll."""
+        self.hass.async_create_task(self._async_update_uptime())
+        super()._handle_coordinator_update()
+
+    @callback
+    def _async_power_state_changed(self, event: Event[EventStateChangedData]) -> None:
+        """Recompute uptime immediately when power state changes."""
+        self.hass.async_create_task(self._async_update_uptime())
+
+    async def _async_update_uptime(self) -> None:
+        """Query recorder history and update the percentage."""
+        power_entity_id = self._power_sensor.entity_id
+        if power_entity_id is None:
+            self._attr_native_value = None
+            self._attr_available = False
+            self.async_write_ha_state()
+            return
+
+        if get_instance(self.hass) is None:
+            self._attr_native_value = None
+            self._attr_available = False
+            self.async_write_ha_state()
+            return
+
+        stats = await self.hass.async_add_executor_job(
+            compute_power_uptime,
+            self.hass,
+            power_entity_id,
+        )
+        if stats is None:
+            self._attr_native_value = None
+            self._attr_available = False
+        else:
+            self._attr_native_value = uptime_ratio_percent(stats)
+            self._attr_available = True
+            self._attr_extra_state_attributes = {
+                "hours_on": round(stats.seconds_on / 3600, 2),
+                "window_hours": round(stats.period_seconds / 3600, 2),
+                "window": str(UPTIME_WINDOW),
+            }
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        """Available when recorder history can be computed."""
+        return self._attr_available
 
 
 class IntelAmtInfoSensor(IntelAmtEntity, SensorEntity):

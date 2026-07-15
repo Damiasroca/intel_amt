@@ -64,6 +64,7 @@ Each configured device gets:
 | Entity                    | Description                                       |
 | ------------------------- | ------------------------------------------------- |
 | `sensor.*_power_state`    | Current state + `available_transitions` attribute |
+| `sensor.*_power_uptime_24h` | Percentage of the last 24h spent in the `on` power state (time-weighted from Recorder history) |
 | `switch.*_power`          | On / soft-off                                     |
 | `button.*_power_on`       | Power on                                          |
 | `button.*_hard_off`       | Abrupt shutdown                                   |
@@ -475,13 +476,9 @@ cards:
       colors:
         - '#4caf50'
     series:
-      - entity: sensor.elitedesk_power_state
+      - entity: sensor.elitedesk_power_uptime_24h
         name: On-time
         color: '#4caf50'
-        transform: 'return x === "on" ? 100 : 0;'
-        group_by:
-          func: avg
-          duration: 24h
         min: 0
         max: 100
 
@@ -833,7 +830,7 @@ cards:
 
 Notes:
 
-- The radial gauge computes the average over the last 24h by transforming `on` → 100 and everything else → 0, then averaging. So `soft-off`, `sleep`, `hibernate`, transitions and `unknown` all count as "not on". If you want to count `sleep`/`standby` as "on", edit the `transform` line.
+- The radial gauge reads `sensor.*_power_uptime_24h`, which computes **time-weighted** uptime from Recorder history (only the `on` state counts as powered on; `sleep`, `standby`, `off`, transitions and `unknown` do not). Do not use apexcharts `group_by: avg` on `power_state` directly — HA only stores state *changes*, so averaging those records treats each transition equally (e.g. one `off`→`on` change in 24h shows as 50% regardless of duration).
 - The Device list uses `custom:button-card` rows with dynamic icon colors: blue when populated, greyed out when `unavailable`/`unknown`. Provisioning state is tri-coloured (`post` green, `in-progress` amber, `pre` red) and provisioning mode is blue/teal for `acm`/`ccm`.
 - The **More actions** grid uses semantic colors per action (destructive → red, transitioning → amber, network → purple, info → blue, wake alarms → orange). All destructive actions have confirmation dialogs; `Refresh` and **Wake alarms** don't (toggle panel / harmless poll). Confirmation text is customizable.
 - **Wake alarms** toggles `input_boolean.elitedesk_wake_alarm_config` and reveals a panel below with next-wake status, a **Schedule alarm** shortcut (navigates to the device page where **Configure → Schedule wake alarm** opens the integration form), and delete-button hints.
