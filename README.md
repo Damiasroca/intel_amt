@@ -827,6 +827,7 @@ cards:
             scheduled alarm — add them to this panel from the entity picker, or use **Configure**
             → **Delete wake alarm**.
 ```
+![alt text](images/ss_amt.png)
 
 Notes:
 
