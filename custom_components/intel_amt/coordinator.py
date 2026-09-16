@@ -16,7 +16,9 @@ from .const import (
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_USERNAME,
+    CONF_VERIFY_SSL,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
     PLATFORMS,
 )
@@ -91,6 +93,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         username=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
         protocol=entry.data[CONF_PROTOCOL],
+        verify_tls=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
     )
 
     coordinator = IntelAmtCoordinator(hass, entry, client)

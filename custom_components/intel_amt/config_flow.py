@@ -20,9 +20,11 @@ from .const import (
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_USERNAME,
+    CONF_VERIFY_SSL,
     DEFAULT_PROTOCOL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_USERNAME,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
     PROTOCOL_HTTP,
     PROTOCOL_HTTPS,
@@ -38,6 +40,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PROTOCOL, default=DEFAULT_PROTOCOL): vol.In(
             [PROTOCOL_HTTP, PROTOCOL_HTTPS]
         ),
+        vol.Required(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
         vol.Optional(CONF_NAME): str,
     }
 )
@@ -83,6 +86,7 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],
                 protocol=user_input[CONF_PROTOCOL],
+                verify_tls=user_input[CONF_VERIFY_SSL],
             )
 
             try:
@@ -99,6 +103,7 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_USERNAME: user_input[CONF_USERNAME],
                         CONF_PASSWORD: user_input[CONF_PASSWORD],
                         CONF_PROTOCOL: user_input[CONF_PROTOCOL],
+                        CONF_VERIFY_SSL: user_input[CONF_VERIFY_SSL],
                         CONF_NAME: name,
                     },
                 )

@@ -9,7 +9,11 @@
           "username": "Username",
           "password": "Password",
           "protocol": "Protocol",
+          "verify_ssl": "Verify TLS certificate",
           "name": "Device name"
+        },
+        "data_description": {
+          "verify_ssl": "Uncheck for HTTPS with the self-signed certificate that most AMT firmware ships with. Only applies when Protocol is https."
         }
       }
     },
