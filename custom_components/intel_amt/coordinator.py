@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .amt_client import AmtClient, AmtDeviceInfo, AmtStatus
 from .const import (
@@ -68,7 +69,7 @@ class IntelAmtCoordinator(DataUpdateCoordinator[AmtStatus]):
         """Schedule a firmware wake and refresh."""
         await self.hass.async_add_executor_job(
             self.client.add_wake_alarm,
-            start_time,
+            dt_util.as_utc(start_time),
             instance_id,
             interval_minutes,
             delete_on_completion,

@@ -11,7 +11,8 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
 
 from .amt_client import AmtAlarm, AmtClient, AmtError
 from .const import (
@@ -168,21 +169,28 @@ class IntelAmtOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         schema = vol.Schema(
             {
-                vol.Required("start_time"): cv.datetime,
+                vol.Required("start_time"): selector.DateTimeSelector(),
                 vol.Required("instance_id", default=_default_instance_id()): str,
                 vol.Optional("element_name"): str,
                 vol.Optional("interval_minutes", default=0): vol.All(
                     vol.Coerce(int), vol.Range(min=0, max=525600)
                 ),
-                vol.Optional("delete_on_completion", default=True): cv.boolean,
+                vol.Optional(
+                    "delete_on_completion", default=True
+                ): selector.BooleanSelector(),
             }
         )
 
         if user_input is not None:
+            start_time = dt_util.parse_datetime(user_input["start_time"])
+            if start_time is None:
+                errors["start_time"] = "invalid_time"
+            
+        if user_input is not None and not errors:
             coordinator = self._coordinator()
             try:
                 await coordinator.async_add_wake_alarm(
-                    start_time=user_input["start_time"],
+                    start_time=start_time,
                     instance_id=user_input["instance_id"],
                     interval_minutes=user_input["interval_minutes"],
                     delete_on_completion=user_input["delete_on_completion"],

@@ -57,6 +57,7 @@
     },
     "error": {
       "cannot_add": "Failed to schedule wake alarm. Check that the time is in the future and the alarm ID is unique (max 32 characters).",
+      "invalid_time": "Enter a valid wake time."
       "cannot_delete": "Failed to delete wake alarm."
     },
     "abort": {
