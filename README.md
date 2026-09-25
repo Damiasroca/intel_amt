@@ -13,6 +13,7 @@ Reference: [rgl/intel-amt-notes](https://github.com/rgl/intel-amt-notes)
 - Power on / soft-off / hard off
 - Hard reset / soft reset / reboot
 - PXE boot (one-time network boot)
+- Firmware wake alarms (schedule and delete)
 - Power state sensor with `available_transitions` attribute
 - Live KVM session + SOL/IDER redirection status as binary sensors
 - AMT NIC link status, IP and MAC address exposed for automations
@@ -846,7 +847,7 @@ Notes:
 - When KVM/IDER is active, some power transitions return "not ready" (ReturnValue 2). Guard automations with `binary_sensor.*_kvm_session_active` or the `ider_enabled` attribute.
 - Each poll issues one WSMAN GET (power) plus five enumerations (KVM, redirection, ethernet, provisioning, event log). Negligible at the default 2-min interval; still fine at the 30-second minimum on LAN.
 - The `Last AMT event` sensor enumerates `AMT_EventLogEntry` and picks the newest by `CreationTimeStamp`. AMT caps the log at ~390 records, so pagination stays cheap.
-- 
+- In this version, wake alarms have been implemented.
 
 
 ## License

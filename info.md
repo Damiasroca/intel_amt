@@ -5,6 +5,7 @@ Out-of-band power control for Intel AMT / vPro systems from Home Assistant.
 - Power on / soft-off / hard off
 - Hard reset / soft reset / reboot
 - PXE boot (one-time network boot)
+- Firmware wake alarms (schedule and delete)
 - Power state sensor with `available_transitions`
 - UI config flow
 
