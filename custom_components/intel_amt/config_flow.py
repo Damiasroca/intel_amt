@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -30,6 +31,40 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# The datetime selector is supposed to submit "YYYY-MM-DD HH:MM:SS".
+# Current frontends store the date as "YYYY-MM-DDT00:00:00" and then append
+# the clock time, which cv.datetime rejects:
+# "2026-09-26T00:00:00 13:15:00".
+_BROKEN_SELECTOR_DATETIME = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})"
+    r"T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?"
+    r"\s+"
+    r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?)$"
+)
+
+
+def normalize_selector_datetime(value: str) -> str:
+    """Rewrite a broken datetime-selector value into ``YYYY-MM-DD HH:MM:SS``."""
+    match = _BROKEN_SELECTOR_DATETIME.fullmatch(value.strip())
+    if match is None:
+        return value
+    clock = match.group("time")
+    if clock.count(":") == 1:
+        clock = f"{clock}:00"
+    return f"{match.group('date')} {clock}"
+
+
+class _WakeDateTimeSelector(selector.DateTimeSelector):
+    """Datetime picker that accepts the frontend's combined date/time string."""
+
+    def __call__(self, data: Any) -> Any:
+        """Validate, repairing ``YYYY-MM-DDT00:00:00 HH:MM:SS`` first."""
+        if isinstance(data, str):
+            data = normalize_selector_datetime(data)
+        return super().__call__(data)
+
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
@@ -169,7 +204,7 @@ class IntelAmtOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         schema = vol.Schema(
             {
-                vol.Required("start_time"): selector.DateTimeSelector(),
+                vol.Required("start_time"): _WakeDateTimeSelector(),
                 vol.Required("instance_id", default=_default_instance_id()): str,
                 vol.Optional("element_name"): str,
                 vol.Optional("interval_minutes", default=0): vol.All(

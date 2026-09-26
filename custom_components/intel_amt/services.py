@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import voluptuous as vol
 
@@ -13,14 +14,23 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .amt_client import AmtError
+from .config_flow import normalize_selector_datetime
 from .const import DOMAIN, SERVICE_ADD_WAKE_ALARM, SERVICE_DELETE_WAKE_ALARM
 from .coordinator import IntelAmtCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def _wake_datetime(value: Any) -> Any:
+    """Accept the datetime selector's broken ``dateT00:00:00 time`` value."""
+    if isinstance(value, str):
+        value = normalize_selector_datetime(value)
+    return cv.datetime(value)
+
+
 ADD_WAKE_ALARM_SCHEMA = cv.make_entity_service_schema(
     {
-        vol.Required("start_time"): cv.datetime,
+        vol.Required("start_time"): _wake_datetime,
         vol.Required("instance_id"): cv.string,
         vol.Optional("interval_minutes", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0)
