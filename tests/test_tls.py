@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.intel_amt.const import CONF_VERIFY_TLS, DOMAIN
+from custom_components.intel_amt.const import CONF_LEGACY_TLS, CONF_VERIFY_TLS, DOMAIN
 
 BASE_DATA = {
     "host": "192.0.2.10",
@@ -201,6 +201,7 @@ async def test_options_preserve_settings_and_reload(
         assert entry.options == {
             "scan_interval": scan_interval,
             CONF_VERIFY_TLS: new_value,
+            CONF_LEGACY_TLS: False,
         }
         coordinator = hass.data[DOMAIN][entry.entry_id]
         assert coordinator is not previous_coordinator
@@ -222,5 +223,9 @@ async def test_options_preserve_settings_and_reload(
             )
             await hass.async_block_till_done()
             assert result["type"] is FlowResultType.CREATE_ENTRY
-            assert entry.options == {"scan_interval": 600, CONF_VERIFY_TLS: False}
+            assert entry.options == {
+                "scan_interval": 600,
+                CONF_VERIFY_TLS: False,
+                CONF_LEGACY_TLS: False,
+            }
             scan_interval = 600

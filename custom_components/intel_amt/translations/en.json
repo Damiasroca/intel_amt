@@ -10,16 +10,18 @@
           "password": "Password",
           "protocol": "Protocol",
           "verify_tls": "Verify TLS certificate",
+          "legacy_tls": "Allow legacy TLS (older AMT firmware)",
           "name": "Device name"
         },
         "data_description": {
-          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network."
+          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network.",
+          "legacy_tls": "HTTPS only. Only enable for older AMT firmware (such as 12.x) that cannot connect otherwise. Allows an older cipher without forward secrecy and servers without secure renegotiation. Independent of certificate verification."
         }
       }
     },
     "error": {
       "cannot_connect": "Unable to connect to AMT. Check host, credentials, and that port 16992/16993 is reachable.",
-      "tls_error": "TLS connection failed. Check the device's HTTPS settings and certificate. If it uses a self-signed certificate, disable verification only on a trusted local network."
+      "tls_error": "TLS connection failed. Check the device's HTTPS settings and certificate. If it uses a self-signed certificate, disable verification only on a trusted local network. Older AMT firmware (such as 12.x) may also need Allow legacy TLS."
     },
     "abort": {
       "already_configured": "This AMT host is already configured."
@@ -45,10 +47,12 @@
       "tls": {
         "title": "TLS settings",
         "data": {
-          "verify_tls": "Verify TLS certificate"
+          "verify_tls": "Verify TLS certificate",
+          "legacy_tls": "Allow legacy TLS (older AMT firmware)"
         },
         "data_description": {
-          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network."
+          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network.",
+          "legacy_tls": "HTTPS only. Only enable for older AMT firmware (such as 12.x) that cannot connect otherwise. Allows an older cipher without forward secrecy and servers without secure renegotiation. Independent of certificate verification."
         }
       },
       "add_wake_alarm": {

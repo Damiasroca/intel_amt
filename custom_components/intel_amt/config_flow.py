@@ -19,11 +19,13 @@ from homeassistant.util import dt as dt_util
 from .amt_client import AmtAlarm, AmtClient, AmtError
 from .const import (
     CONF_HOST,
+    CONF_LEGACY_TLS,
     CONF_NAME,
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_USERNAME,
     CONF_VERIFY_TLS,
+    DEFAULT_LEGACY_TLS,
     DEFAULT_PROTOCOL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_USERNAME,
@@ -80,6 +82,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(
             CONF_VERIFY_TLS, default=DEFAULT_VERIFY_TLS
         ): selector.BooleanSelector(),
+        vol.Optional(
+            CONF_LEGACY_TLS, default=DEFAULT_LEGACY_TLS
+        ): selector.BooleanSelector(),
         vol.Optional(CONF_NAME): str,
     }
 )
@@ -126,6 +131,7 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                 password=user_input[CONF_PASSWORD],
                 protocol=user_input[CONF_PROTOCOL],
                 verify_tls=user_input.get(CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS),
+                legacy_tls=user_input.get(CONF_LEGACY_TLS, DEFAULT_LEGACY_TLS),
             )
 
             try:
@@ -147,6 +153,9 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROTOCOL: user_input[CONF_PROTOCOL],
                         CONF_VERIFY_TLS: user_input.get(
                             CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS
+                        ),
+                        CONF_LEGACY_TLS: user_input.get(
+                            CONF_LEGACY_TLS, DEFAULT_LEGACY_TLS
                         ),
                         CONF_NAME: name,
                     },
@@ -200,7 +209,7 @@ class IntelAmtOptionsFlow(OptionsFlow):
     async def async_step_tls(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage certificate verification for this device."""
+        """Manage TLS verification and legacy compatibility for this device."""
         if user_input is not None:
             return self.async_create_entry(
                 title="",
@@ -211,12 +220,19 @@ class IntelAmtOptionsFlow(OptionsFlow):
             CONF_VERIFY_TLS,
             self.config_entry.data.get(CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS),
         )
+        legacy_tls = self.config_entry.options.get(
+            CONF_LEGACY_TLS,
+            self.config_entry.data.get(CONF_LEGACY_TLS, DEFAULT_LEGACY_TLS),
+        )
         return self.async_show_form(
             step_id="tls",
             data_schema=vol.Schema(
                 {
                     vol.Optional(
                         CONF_VERIFY_TLS, default=verify_tls
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_LEGACY_TLS, default=legacy_tls
                     ): selector.BooleanSelector(),
                 }
             ),

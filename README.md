@@ -63,6 +63,20 @@ If an existing entry could not finish setup, reload it after saving to apply the
 
 Disabling verification keeps HTTPS encryption but skips certificate trust, expiry, and hostname checks, so Home Assistant cannot verify the device's identity. The setting applies only to the selected AMT device. It does not switch to HTTP or disable certificate verification for other devices or integrations.
 
+### Older AMT firmware (legacy TLS)
+
+Some older AMT firmware, for example 12.x, cannot complete a modern TLS handshake with Home Assistant. It only offers TLS 1.2 with the `AES128-GCM-SHA256` cipher (RSA key exchange) and does not advertise secure renegotiation. Current OpenSSL refuses both by default, so the connection fails with a handshake error even when **Verify TLS certificate** is off.
+
+For these devices only, enable **Allow legacy TLS (older AMT firmware)** when adding the device, or for an existing entry under **Configure → TLS settings**. It is off by default and independent of **Verify TLS certificate**.
+
+What it changes, for that device only:
+
+- TLS 1.2 stays the minimum version and the normal cipher list is kept. Only `AES128-GCM-SHA256` is added, and the OpenSSL security level is not lowered.
+- The `OP_LEGACY_SERVER_CONNECT` option allows connecting to a server that does not advertise secure renegotiation.
+- Certificate checks work as before. With **Verify TLS certificate** on, an untrusted certificate still fails.
+
+Trade-offs: static RSA key exchange has no forward secrecy, so recorded traffic could be decrypted if the device's private key is ever exposed. Allowing servers without secure renegotiation is a compatibility exception, not proof that the device is vulnerable. Use it only on a trusted local network, for a device that cannot do better. Other devices and other integrations are not affected.
+
 ## Entities
 
 Each configured device gets:
