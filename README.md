@@ -872,7 +872,8 @@ Notes:
 - Version 0.2.0 implements firmware wake alarms.
 - Version 0.2.3 fixes **Schedule wake alarm**. Home Assistant's datetime picker was submitting the date and clock as one invalid value (`2026-09-26T00:00:00 13:15:00`), so the form rejected the time before the alarm was sent to AMT. The options form and the `add_wake_alarm` service now accept that value. The wake time still has to be in the future.
 - Version 0.2.4 clears two Home Assistant warnings. The 24h uptime sensor reads Recorder history through the database executor, and the power switch now has a unique ID so it stays attached to the AMT device.
-- Version 0.3.0 adds a per-device **Verify TLS certificate** option for HTTPS (on by default, thanks to AVidal88). Older AMT firmware that cannot negotiate modern TLS is not covered yet.
+- Version 0.3.0 adds a per-device **Verify TLS certificate** option for HTTPS (on by default, thanks to AVidal88). Older AMT firmware that cannot negotiate modern TLS is covered by version 0.4.0.
+- Version 0.4.0 adds an opt-in **Allow legacy TLS (older AMT firmware)** setting for devices, such as AMT 12.x, that only support TLS 1.2 with `AES128-GCM-SHA256` and no secure renegotiation. See *Older AMT firmware (legacy TLS)* above.
 
 
 ## License
