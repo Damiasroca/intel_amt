@@ -20,3 +20,7 @@ Scheduling a wake alarm no longer fails when Home Assistant's datetime picker su
 ## 0.2.4
 
 The 24h power uptime sensor now reads Recorder history on Home Assistant's database executor, which removes the warning about accessing the database outside that executor. The power switch has a unique ID, so Home Assistant keeps it attached to the AMT device.
+
+## 0.3.0
+
+New **Verify TLS certificate** option for devices that use HTTPS. It is on by default and stays on for existing devices. If AMT uses a self-signed certificate, you can turn it off when adding the device, or later under **Configure → TLS settings**. Contributed by AVidal88.
