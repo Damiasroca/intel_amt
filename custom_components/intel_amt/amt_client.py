@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import html
+import ssl
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from xml.etree import ElementTree
 
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPDigestAuth
 
 from .const import PORT_HTTP, PORT_HTTPS, POWER_STATES, PROTOCOL_HTTP, RETURN_VALUES
@@ -143,6 +145,39 @@ class AmtDeviceInfo:
     platform_guid: str | None = None
 
 
+# Older AMT firmware (e.g. 12.x) only offers TLS 1.2 with RSA key exchange.
+# Recent OpenSSL builds no longer enable it by default, so the handshake fails
+# before certificate checks even when verification is off. The compatibility
+# mode is opt-in per device and only adds that one cipher to the defaults.
+AMT_LEGACY_TLS_CIPHERS = "DEFAULT:AES128-GCM-SHA256"
+
+
+def build_legacy_ssl_context(verify_tls: bool) -> ssl.SSLContext:
+    """Return an SSL context that still accepts AMT's legacy cipher suite."""
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_ciphers(AMT_LEGACY_TLS_CIPHERS)
+    # AMT firmware also lacks RFC 5746 secure renegotiation.
+    context.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0x4)
+    # urllib3 matches the hostname itself, which also works for IP hosts.
+    context.check_hostname = False
+    if not verify_tls:
+        context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+class _LegacyTlsAdapter(HTTPAdapter):
+    """Send requests through a given SSL context."""
+
+    def __init__(self, ssl_context: ssl.SSLContext, **kwargs: object) -> None:
+        self._ssl_context = ssl_context
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, *args: object, **kwargs: object) -> None:
+        kwargs["ssl_context"] = self._ssl_context
+        super().init_poolmanager(*args, **kwargs)
+
+
 class AmtClient:
     """Intel AMT WSMAN client."""
 
@@ -154,6 +189,7 @@ class AmtClient:
         protocol: str = PROTOCOL_HTTP,
         timeout: int = 15,
         verify_tls: bool = True,
+        legacy_tls: bool = False,
     ) -> None:
         self.host = host
         self.username = username
@@ -161,6 +197,13 @@ class AmtClient:
         self.protocol = protocol
         self.timeout = timeout
         self.verify_tls = verify_tls
+        self.legacy_tls = legacy_tls
+        # One context per client, shared by the status and power requests.
+        self._legacy_context = (
+            build_legacy_ssl_context(verify_tls)
+            if legacy_tls and protocol != PROTOCOL_HTTP
+            else None
+        )
 
     @property
     def uri(self) -> str:
@@ -170,14 +213,24 @@ class AmtClient:
     def _auth(self) -> HTTPDigestAuth:
         return HTTPDigestAuth(self.username, self.password)
 
+    def _send(
+        self, payload: str, headers: dict[str, str] | None = None
+    ) -> requests.Response:
+        with requests.Session() as session:
+            if self._legacy_context is not None:
+                session.mount("https://", _LegacyTlsAdapter(self._legacy_context))
+            return session.post(
+                self.uri,
+                headers=headers,
+                auth=self._auth(),
+                data=payload,
+                timeout=self.timeout,
+                verify=self.verify_tls if self.protocol == "https" else True,
+            )
+
     def _post(self, payload: str) -> requests.Response:
-        resp = requests.post(
-            self.uri,
-            headers={"content-type": "application/soap+xml;charset=UTF-8"},
-            auth=self._auth(),
-            data=payload,
-            timeout=self.timeout,
-            verify=self.verify_tls if self.protocol == "https" else True,
+        resp = self._send(
+            payload, {"content-type": "application/soap+xml;charset=UTF-8"}
         )
         resp.raise_for_status()
         return resp
@@ -493,13 +546,7 @@ class AmtClient:
     def get_status(self) -> AmtStatus:
         """Return current power state plus KVM + redirection status."""
         payload = self._get_request(self.uri, CIM_ASSOCIATED_POWER)
-        resp = requests.post(
-            self.uri,
-            auth=self._auth(),
-            data=payload,
-            timeout=self.timeout,
-            verify=self.verify_tls if self.protocol == "https" else True,
-        )
+        resp = self._send(payload)
         resp.raise_for_status()
         power_text = self._find_in_xml(resp.content, "PowerState")
         if power_text is None:

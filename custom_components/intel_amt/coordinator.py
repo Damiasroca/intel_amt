@@ -14,10 +14,12 @@ from homeassistant.util import dt as dt_util
 from .amt_client import AmtClient, AmtDeviceInfo, AmtStatus
 from .const import (
     CONF_HOST,
+    CONF_LEGACY_TLS,
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_USERNAME,
     CONF_VERIFY_TLS,
+    DEFAULT_LEGACY_TLS,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VERIFY_TLS,
     DOMAIN,
@@ -97,6 +99,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         verify_tls=entry.options.get(
             CONF_VERIFY_TLS,
             entry.data.get(CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS),
+        ),
+        legacy_tls=entry.options.get(
+            CONF_LEGACY_TLS,
+            entry.data.get(CONF_LEGACY_TLS, DEFAULT_LEGACY_TLS),
         ),
     )
 
