@@ -9,12 +9,17 @@
           "username": "Username",
           "password": "Password",
           "protocol": "Protocol",
+          "verify_tls": "Verify TLS certificate",
           "name": "Device name"
+        },
+        "data_description": {
+          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network."
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to AMT. Check host, credentials, and that port 16992/16993 is reachable."
+      "cannot_connect": "Unable to connect to AMT. Check host, credentials, and that port 16992/16993 is reachable.",
+      "tls_error": "TLS connection failed. Check the device's HTTPS settings and certificate. If it uses a self-signed certificate, disable verification only on a trusted local network."
     },
     "abort": {
       "already_configured": "This AMT host is already configured."
@@ -26,6 +31,7 @@
         "title": "Intel AMT options",
         "menu_options": {
           "scan_interval": "Poll interval",
+          "tls": "TLS settings",
           "add_wake_alarm": "Schedule wake alarm",
           "manage_wake_alarms": "Delete wake alarm"
         }
@@ -34,6 +40,15 @@
         "title": "Poll interval",
         "data": {
           "scan_interval": "Status poll interval (seconds)"
+        }
+      },
+      "tls": {
+        "title": "TLS settings",
+        "data": {
+          "verify_tls": "Verify TLS certificate"
+        },
+        "data_description": {
+          "verify_tls": "HTTPS only. Disabling keeps encryption but does not verify the device's identity. Use only for a trusted device on a trusted local network."
         }
       },
       "add_wake_alarm": {

@@ -9,10 +9,12 @@ CONF_HOST = "host"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_NAME = "name"
+CONF_VERIFY_TLS = "verify_tls"
 
 DEFAULT_USERNAME = "admin"
 DEFAULT_PROTOCOL = "http"
 DEFAULT_SCAN_INTERVAL = 120
+DEFAULT_VERIFY_TLS = True
 
 PROTOCOL_HTTP = "http"
 PROTOCOL_HTTPS = "https"

@@ -51,9 +51,17 @@ Copy `custom_components/intel_amt/` to `/config/custom_components/intel_amt/` an
 | Username | `(User)`         | MEBx admin user                               |
 | Password | *(AMT password)* | Not the OS login password                     |
 | Protocol | `http`           | Use `https` only if TLS is provisioned on AMT |
+| Verify TLS certificate | Enabled | Applies only to HTTPS; see below for self-signed certificates |
 
+### Self-signed TLS certificates
 
+**Verify TLS certificate** is enabled by default. Existing devices also keep verification enabled unless you change this setting.
 
+If AMT uses a self-signed certificate that Home Assistant does not trust, you can disable **Verify TLS certificate** when adding the device, or for an existing entry under **Configure → TLS settings**. Only do this for a trusted device on a trusted local network.
+
+If an existing entry could not finish setup, reload it after saving to apply the setting immediately.
+
+Disabling verification keeps HTTPS encryption but skips certificate trust, expiry, and hostname checks, so Home Assistant cannot verify the device's identity. The setting applies only to the selected AMT device. It does not switch to HTTP or disable certificate verification for other devices or integrations.
 
 ## Entities
 
@@ -855,3 +863,15 @@ Notes:
 ## License
 
 Apache 2.0
+
+## Tests
+
+The TLS regression tests use Python 3.14 and Home Assistant 2026.10.4:
+
+```sh
+python3.14 -m venv venv
+venv/bin/pip install -r requirements-test.txt
+venv/bin/python -m pytest
+```
+
+AMT HTTP requests are mocked. The tests cover Home Assistant setup and options flows, per-device certificate verification, and applying options through a config entry reload; they do not require or control a physical AMT device.

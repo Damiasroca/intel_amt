@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 import voluptuous as vol
+from requests.exceptions import SSLError
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
@@ -22,9 +23,11 @@ from .const import (
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_USERNAME,
+    CONF_VERIFY_TLS,
     DEFAULT_PROTOCOL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_USERNAME,
+    DEFAULT_VERIFY_TLS,
     DOMAIN,
     PROTOCOL_HTTP,
     PROTOCOL_HTTPS,
@@ -74,6 +77,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_PROTOCOL, default=DEFAULT_PROTOCOL): vol.In(
             [PROTOCOL_HTTP, PROTOCOL_HTTPS]
         ),
+        vol.Optional(
+            CONF_VERIFY_TLS, default=DEFAULT_VERIFY_TLS
+        ): selector.BooleanSelector(),
         vol.Optional(CONF_NAME): str,
     }
 )
@@ -119,10 +125,14 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],
                 protocol=user_input[CONF_PROTOCOL],
+                verify_tls=user_input.get(CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS),
             )
 
             try:
                 await self.hass.async_add_executor_job(client.get_status)
+            except SSLError:
+                _LOGGER.exception("AMT TLS connection test failed")
+                errors["base"] = "tls_error"
             except Exception:
                 _LOGGER.exception("AMT connection test failed")
                 errors["base"] = "cannot_connect"
@@ -135,13 +145,23 @@ class IntelAmtConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_USERNAME: user_input[CONF_USERNAME],
                         CONF_PASSWORD: user_input[CONF_PASSWORD],
                         CONF_PROTOCOL: user_input[CONF_PROTOCOL],
+                        CONF_VERIFY_TLS: user_input.get(
+                            CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS
+                        ),
                         CONF_NAME: name,
                     },
                 )
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=self.add_suggested_values_to_schema(
+                STEP_USER_DATA_SCHEMA,
+                {
+                    key: value
+                    for key, value in (user_input or {}).items()
+                    if key != CONF_PASSWORD
+                },
+            ),
             errors=errors,
         )
 
@@ -165,6 +185,8 @@ class IntelAmtOptionsFlow(OptionsFlow):
         if user_input is not None:
             if user_input == "scan_interval":
                 return await self.async_step_scan_interval()
+            if user_input == "tls":
+                return await self.async_step_tls()
             if user_input == "add_wake_alarm":
                 return await self.async_step_add_wake_alarm()
             if user_input == "manage_wake_alarms":
@@ -172,7 +194,32 @@ class IntelAmtOptionsFlow(OptionsFlow):
 
         return self.async_show_menu(
             step_id="init",
-            menu_options=["scan_interval", "add_wake_alarm", "manage_wake_alarms"],
+            menu_options=["scan_interval", "tls", "add_wake_alarm", "manage_wake_alarms"],
+        )
+
+    async def async_step_tls(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage certificate verification for this device."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={**self.config_entry.options, **user_input},
+            )
+
+        verify_tls = self.config_entry.options.get(
+            CONF_VERIFY_TLS,
+            self.config_entry.data.get(CONF_VERIFY_TLS, DEFAULT_VERIFY_TLS),
+        )
+        return self.async_show_form(
+            step_id="tls",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_VERIFY_TLS, default=verify_tls
+                    ): selector.BooleanSelector(),
+                }
+            ),
         )
 
     async def async_step_scan_interval(
